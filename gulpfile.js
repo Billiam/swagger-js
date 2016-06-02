@@ -11,6 +11,19 @@ var jshint = require('gulp-jshint');
 var mocha  = require('gulp-mocha');
 var pkg = require('./package');
 var source = require('vinyl-source-stream');
+// Browser Unit Tests
+var Karma = require('karma').Server;
+var karmaConfig = require('./karma.conf');
+var assign = require('object.assign');
+var connect = require('gulp-connect');
+var cors = require('connect-cors');
+
+// This is a workaround for this bug...https://github.com/feross/buffer/issues/79 
+// Please refactor this, when the bug is resolved!
+// PS: you need to depend on buffer@3.4.3
+var OldBuffer = require.resolve('buffer/');
+var builtinsOverride = require('browserify/lib/builtins')
+builtinsOverride.buffer = OldBuffer
 
 var banner = ['/**',
   ' * <%= pkg.name %> - <%= pkg.description %>',
@@ -22,7 +35,7 @@ var banner = ['/**',
 var basename = 'swagger-client';
 var paths = {
   sources: ['index.js', 'lib/**/*.js'],
-  tests: ['test/*.js', 'test/compat/*.js', '!test/browser/*.js'],
+  tests: ['test/*.js', 'test/compat/*.js', 'test/both/*.js'],
   dist: 'browser'
 };
 
@@ -68,6 +81,7 @@ gulp.task('build', function (cb) {
     var useDebug = n % 2 === 0;
     var b = browserify('./index.js', {
       debug: useDebug,
+      builtins: builtinsOverride,
       standalone: 'SwaggerClient'
     });
 
@@ -94,14 +108,39 @@ gulp.task('build', function (cb) {
 
 gulp.task('test', function () {
   process.env.NODE_ENV = 'test';
-
   return gulp
     .src(paths.tests)
-    .pipe(mocha({reporter: 'spec'}));
+    .pipe(mocha({reporter: 'spec'}))
+    .on('error', console.log);
 });
 
 gulp.task('watch', ['test'], function () {
   gulp.watch(paths.all, ['test']);
 });
+
+gulp.task('watch:build', ['build'], function() {
+  gulp.watch(paths.all, ['build']);
+});
+
+gulp.task('browsertest', function(done) {
+  new Karma(karmaConfig, done).start()
+});
+
+gulp.task('connect', function () {
+  connect.server({
+    livereload: false,
+    root: __dirname + '/test/spec/v2',
+    port: 8000,
+    middleware: function (a,b) {
+      return [ cors(a,b) ];
+    }
+  });
+});
+
+gulp.task('watch-browsertest', function(done){
+  var opts = assign({}, karmaConfig, {singleRun: false});
+  new Karma(opts, done).start()
+});
+
 
 gulp.task('default', ['clean', 'lint', 'test', 'build']);

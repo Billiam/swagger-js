@@ -28,6 +28,17 @@ var intArrayQP = {
   },
   collectionFormat: 'csv'
 };
+var quantityFD = {
+  in: 'formData',
+  name: 'quantity',
+  type: 'integer',
+  format: 'int32'
+};
+var nameFD = {
+  in: 'formData',
+  name: 'name',
+  type: 'string'
+};
 
 describe('operations', function () {
   it('should generate a url', function () {
@@ -510,6 +521,38 @@ describe('operations', function () {
 
   });
 
+  it('should default to application/json if it can', function(){
+
+    // A parent with two consumes and consumes
+    var parent = {
+      produces: [
+        'application/produces',
+        'application/json' // note that application/json /isn't/ the first item
+      ],
+      consumes: [
+        'application/consumes',
+        'application/json'
+      ]
+    };
+
+    var parameters = [ { in: 'body', name: 'josh', type: 'string' } ];
+    var args = { 'parameters': parameters };
+
+    // make sure we have method that has a body payload
+    var op = new Operation(parent, 'http', 'test', 'post', '/path', args,
+                                   {}, {}, new auth.SwaggerAuthorizations());
+
+    // my happy payload...
+    args = {'josh': 'hello'};
+    var opts = {mock: true};
+    var obj = op.execute(args, opts);
+
+    // Check end result of "produces"/"consumes"
+    expect(obj.headers.Accept).toBe('application/json');
+    expect(obj.headers['Content-Type']).toBe('application/json');
+
+  });
+
   it('should default the content-accept header to application/json, as last resort',function() {
     var op = new Operation({}, 'http', 'test', 'get', '/path', {},
                                    {}, {}, new auth.SwaggerAuthorizations());
@@ -552,5 +595,37 @@ describe('operations', function () {
     expect(p.allowableValues.descriptiveValues[1].isDefault).toBe(true); // false is the default
   });
 
+  it('should omit */* warnings', function() {
+    var parameters = [
+      quantityQP
+    ];
+    var op = new Operation({}, 'http', 'test', 'get', '/path', { parameters: parameters },
+                                   {}, {}, new auth.SwaggerAuthorizations());
+    expect(op.matchesAccept('application/json')).toEqual(true);
+
+    expect(op.matchesAccept('text/html')).toEqual(false);
+
+    op.produces.push('*/*');
+    expect(op.matchesAccept('text/html')).toEqual(true);
+    expect(op.matchesAccept('application/json')).toEqual(true);
+
+    op.produces = ['*/*'];
+    expect(op.matchesAccept('text/html')).toEqual(true);
+    expect(op.matchesAccept('application/json')).toEqual(true);
+
+    // no accepts, no produces, no problem!
+    expect(op.matchesAccept()).toEqual(true);
+
+    op.produces = undefined;
+    expect(op.matchesAccept()).toEqual(true);
+    expect(op.matchesAccept('application/json')).toEqual(true);
+  });
+
+  it('should generate a x-www-form-urlencoded body', function() {
+    var parameters = [quantityFD, nameFD];
+    var op = new Operation({}, 'http', 'test', 'get', '/path', { parameters: parameters },
+                                   {}, {}, new auth.SwaggerAuthorizations());
+    expect(op.getBody({}, {name: 'Douglas Adams', quantity: 42}, {})).toEqual('quantity=42&name=Douglas%20Adams');
+  });
 });
 
